@@ -1,24 +1,17 @@
-.PHONY: dev dev-desktop dev-server build build-server build-desktop release-binaries test clean
+.PHONY: dev build run release-binaries test clean
 
-# Default: Run desktop dev app
-dev: dev-desktop
-
-# Run Smara Desktop dev mode (Tauri + Rust + Vite)
-dev-desktop:
-	$(MAKE) -C smara-desktop-rust dev
-
-# Run Go MCP Server in dev mode
-dev-server:
+# Default: Run Go MCP Server in dev mode
+dev:
 	go run ./cmd/server
 
-# Build binaries
-build: build-server build-desktop
-
-build-server:
+# Build CLI / Server binary
+build:
+	@mkdir -p bin
 	go build -o bin/smara ./cmd/server
 
-build-desktop:
-	$(MAKE) -C smara-desktop-rust build
+# Run the compiled binary
+run: build
+	./bin/smara
 
 # Cross-compile release binaries for Windows, macOS, Linux
 release-binaries:
@@ -39,8 +32,6 @@ release-binaries:
 
 test:
 	go test ./...
-	$(MAKE) -C smara-desktop-rust test
 
 clean:
 	rm -rf bin/ dist/
-	$(MAKE) -C smara-desktop-rust clean
