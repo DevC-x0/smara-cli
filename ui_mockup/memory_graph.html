@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<title>Smara · Memory Graph (Mock)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<style>
+  :root {
+    --bg: #0b0d0a;
+    --bg-soft: #0f1410;
+    --panel: #11140f;
+    --border: #1f2419;
+    --border-soft: #161a12;
+    --text: #e9efe2;
+    --muted: #8a9078;
+    --accent: #bef264;
+    --accent-soft: rgba(190,242,100,0.12);
+    --auto: #6a8a3a;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  #app { display: grid; grid-template-columns: 220px 1fr 360px; height: 100vh; }
+
+  /* Workspace sidebar */
+  aside.left {
+    background: var(--panel); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+  }
+  .brand {
+    padding: 16px 18px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .brand-logo {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), #88be3b);
+    display:flex; align-items:center; justify-content:center;
+    font-weight:700; color:#0b0d0a;
+  }
+  .brand-title { font-weight: 600; font-size: 14px; }
+  .brand-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .ws-section { padding: 14px; flex: 1; overflow-y: auto; }
+  .ws-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--muted); margin: 0 0 8px;
+  }
+  .ws { display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+        border-radius: 6px; cursor: pointer; font-size: 12px; color: #cfd8c0;
+        transition: background 120ms; }
+  .ws:hover { background: var(--bg-soft); }
+  .ws.active { background: var(--accent-soft); color: var(--accent); }
+  .ws .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.6; }
+
+  /* Center column */
+  main {
+    display: flex; flex-direction: column;
+    min-width: 0; min-height: 0; /* fix: izinkan child shrink dalam grid/flex */
+    overflow: hidden;
+  }
+  header.top {
+    padding: 12px 18px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px; background: var(--panel);
+    flex-shrink: 0;
+  }
+  header h1 { margin: 0; font-size: 14px; font-weight: 600; }
+  header .pill { font-size: 11px; color: var(--muted); padding: 2px 8px;
+                 border: 1px solid var(--border); border-radius: 999px; }
+  header .stats { color: var(--muted); font-size: 12px; }
+  header input.search {
+    background: var(--bg-soft); border: 1px solid var(--border);
+    color: var(--text); padding: 6px 10px; border-radius: 6px;
+    font-size: 12px; width: 200px; outline: none;
+  }
+  header input.search:focus { border-color: var(--accent); }
+  header .controls { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+  header .num {
+    width: 56px; background: var(--bg-soft); border: 1px solid var(--border);
+    color: var(--text); padding: 4px 6px; border-radius: 6px;
+    font-size: 11px; outline: none;
+  }
+  header label { font-size: 10px; color: var(--muted); }
+  header button {
+    background: var(--bg-soft); border: 1px solid var(--border); color: var(--text);
+    padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 4px;
+    transition: all 120ms;
+  }
+  header button:hover { border-color: var(--accent); color: var(--accent); }
+  header button.primary {
+    background: var(--accent-soft); border-color: rgba(190,242,100,0.3);
+    color: var(--accent);
+  }
+  header button.primary:hover { background: var(--accent); color: #0b0d0a; }
+
+  /* Graph area */
+  .graph-wrap {
+    flex: 1; position: relative; min-height: 0;
+    background: radial-gradient(ellipse at center, #0f1410 0%, #0b0d0a 70%);
+  }
+  #graph {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+  }
+  .legend {
+    position: absolute; bottom: 16px; left: 16px;
+    background: rgba(17,20,15,0.92); backdrop-filter: blur(6px);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; font-size: 10px; color: var(--muted);
+    display: flex; gap: 14px; align-items: center; z-index: 10;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .swatch { width: 14px; height: 2px; background: var(--accent); }
+  .legend .swatch.dashed { border-top: 1.5px dashed var(--auto); background: transparent; }
+
+  /* Right detail panel */
+  aside.right {
+    background: var(--panel); border-left: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .right-head {
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .right-body { flex: 1; overflow-y: auto; padding: 16px 18px; }
+  .empty { color: var(--muted); font-size: 12px; text-align: center; padding: 40px 0; }
+  .meta { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .pills { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+  .pill {
+    padding: 2px 8px; border-radius: 999px; font-size: 10px;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .pill.gray { background: #1a1f15; color: var(--muted); }
+  .content {
+    background: var(--bg-soft); border: 1px solid var(--border);
+    padding: 12px; border-radius: 8px; white-space: pre-wrap;
+    font-size: 12px; line-height: 1.55; max-height: 220px; overflow-y: auto;
+    color: #d8e0cd;
+  }
+  .stats-row { display: flex; gap: 12px; font-size: 10px; color: var(--muted);
+               margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-soft); }
+  .stats-row .v { color: var(--text); font-weight: 600; }
+
+  .links-title {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--muted); margin: 18px 0 8px;
+  }
+  .link {
+    display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+    background: var(--bg-soft); border: 1px solid var(--border-soft);
+    border-radius: 6px; font-size: 11px; margin-bottom: 4px;
+    cursor: pointer; transition: border-color 120ms;
+  }
+  .link:hover { border-color: var(--accent); }
+  .link .rel {
+    background: var(--accent-soft); color: var(--accent);
+    padding: 1px 6px; border-radius: 999px; font-size: 9px; font-weight: 600;
+  }
+  .link.auto .rel { background: rgba(106,138,58,0.2); color: var(--auto); }
+  .link .w { color: var(--muted); font-size: 10px; }
+  .link .lbl { flex: 1; color: var(--text); white-space: nowrap; overflow: hidden;
+               text-overflow: ellipsis; }
+
+  /* Toast */
+  #toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: rgba(17,20,15,0.95); border: 1px solid rgba(190,242,100,0.3);
+    color: var(--accent); padding: 10px 18px; border-radius: 8px;
+    font-size: 12px; opacity: 0; pointer-events: none; transition: opacity 200ms;
+    z-index: 100; backdrop-filter: blur(6px);
+  }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- LEFT: Workspace list -->
+  <aside class="left">
+    <div class="brand">
+      <div class="brand-logo">S</div>
+      <div>
+        <div class="brand-title">Smara</div>
+        <div class="brand-sub">Memory Graph · Mock</div>
+      </div>
+    </div>
+    <div class="ws-section">
+      <div class="ws-label">Workspace</div>
+      <div class="ws active"><span class="dot"></span> Smara CLI</div>
+      <div class="ws"><span class="dot"></span> Personal</div>
+      <div class="ws"><span class="dot"></span> Client · Project X</div>
+      <div class="ws"><span class="dot"></span> Research</div>
+
+      <div class="ws-label" style="margin-top: 22px;">Filter Tag</div>
+      <div class="ws"><span class="dot"></span> #golang <span style="margin-left:auto; color:var(--muted);">8</span></div>
+      <div class="ws"><span class="dot"></span> #design <span style="margin-left:auto; color:var(--muted);">5</span></div>
+      <div class="ws"><span class="dot"></span> #deploy <span style="margin-left:auto; color:var(--muted);">3</span></div>
+      <div class="ws"><span class="dot"></span> #idea <span style="margin-left:auto; color:var(--muted);">6</span></div>
+    </div>
+  </aside>
+
+  <!-- CENTER: Graph -->
+  <main>
+    <header class="top">
+      <h1>🕸️ Memory Graph</h1>
+      <span class="pill" id="stats">— · —</span>
+      <input class="search" id="search" placeholder="Cari node…" />
+      <div class="controls">
+        <label>threshold <input type="number" class="num" id="threshold" value="0.78" step="0.01" min="0" max="1" /></label>
+        <label>top-k <input type="number" class="num" id="topk" value="5" min="1" max="20" /></label>
+        <button class="primary" id="autolink">✦ Auto-link</button>
+        <button id="reload">↻ Reload</button>
+      </div>
+    </header>
+    <div class="graph-wrap">
+      <div id="graph"></div>
+      <div class="legend">
+        <span><span class="swatch"></span> manual link</span>
+        <span><span class="swatch dashed"></span> auto link (similarity)</span>
+        <span style="margin-left:auto;">click node untuk detail · scroll untuk zoom</span>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: Detail -->
+  <aside class="right">
+    <div class="right-head">◇ Detail Memori</div>
+    <div class="right-body" id="detail">
+      <div class="empty">Pilih node dari graph<br>untuk melihat detail dan link-nya.</div>
+    </div>
+  </aside>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ========================================================================
+// MOCK DATA — terlihat realistis, mirip output asli /api/memories/graph
+// ========================================================================
+const MOCK_NODES = [
+  { id: 1,  label: "Setup project Go dengan cobra CLI",     content: "Inisialisasi project Smara CLI menggunakan cobra. Struktur folder: cmd/smara untuk command, internal/ untuk logic, pkg/ untuk reusable. Pakai go mod init github.com/gede-cahya/Smara-CLI", tags: ["golang","cli","setup"], source: "user", category_id: 1, degree: 7 },
+  { id: 2,  label: "SQLite WAL mode untuk konkurensi",       content: "Buka database dengan ?_journal_mode=WAL&_busy_timeout=5000 untuk mengizinkan multiple readers + 1 writer. Penting untuk session concurrent.", tags: ["golang","sqlite","db"], source: "agent:worker-1", category_id: 1, degree: 4 },
+  { id: 3,  label: "Cosine similarity float32 BLOB",         content: "Embedding disimpan sebagai BLOB di SQLite. Konversi []float32 ↔ []byte dengan binary.LittleEndian. Untuk pencarian: hitung cosine similarity terhadap query embedding.", tags: ["golang","embedding","search"], source: "agent:worker-2", category_id: 1, degree: 5 },
+  { id: 4,  label: "FTS5 untuk fallback full-text search",   content: "Kalau provider tidak punya endpoint embeddings (mis. CLIProxyAPI), fallback ke FTS5 virtual table dengan trigger sync ai/au/ad.", tags: ["golang","sqlite","search"], source: "agent:worker-2", category_id: 1, degree: 4 },
+  { id: 5,  label: "Pastel green palette #bef264",           content: "Crush TUI design system: dominasi #bef264 (pastel green) di background gelap. Kontras tinggi, eye fatigue rendah.", tags: ["design","tui","color"], source: "user", category_id: 2, degree: 6 },
+  { id: 6,  label: "Phase pipeline animation",               content: "Animasi fase: Thinking → Analyzing → Exploring → Generating. Spinner dots dengan rotasi tiap 2 detik. Real-time stats elapsed + token in/out.", tags: ["design","animation","tui"], source: "user", category_id: 2, degree: 5 },
+  { id: 7,  label: "Harmonica spring physics",               content: "Sidebar dan transisi UI pakai harmonica untuk animasi spring physics yang organik. Lebih natural daripada linear easing.", tags: ["design","animation"], source: "agent:worker-1", category_id: 2, degree: 3 },
+  { id: 8,  label: "Auto-revert pada eksekusi gagal",        content: "Build mode (read-write) wrap setiap operasi dalam snapshot. Kalau test gagal atau ada panic, auto-revert ke state sebelumnya.", tags: ["safety","golang"], source: "agent:worker-3", category_id: 1, degree: 4 },
+  { id: 9,  label: "MCP auto-discovery dari Windsurf",       content: "Saat startup, scan ~/.codeium/windsurf/mcp_config.json dan ~/.config/opencode/mcp.json. Merge ke smara native config.", tags: ["mcp","integration"], source: "user", category_id: 1, degree: 4 },
+  { id: 10, label: "Skill execution tracker SQLite",         content: "Tabel skill_runs untuk log eksekusi: skill_name, status, duration, error, output_summary. Dipakai untuk analytics + auto-refinement.", tags: ["skill","analytics","sqlite"], source: "agent:worker-2", category_id: 3, degree: 6 },
+  { id: 11, label: "React Flow untuk skill dependency",      content: "Visualisasi skill tree pakai @xyflow/react. Node = skill, edge animated = dependency. Background grid + minimap.", tags: ["design","frontend","react"], source: "user", category_id: 2, degree: 5 },
+  { id: 12, label: "Telegram bot dengan /ask /mode /mcp",    content: "Smara serve --platform telegram. Command handler: /ask kirim ke supervisor, /mode ganti mode agen (ask/rush/plan), /mcp list tools.", tags: ["bot","platform","telegram"], source: "user", category_id: 4, degree: 3 },
+  { id: 13, label: "Workspace isolation memori",             content: "Setiap workspace punya workspace_id. Memory query selalu filter by active workspace_id. Migrasi: kolom workspace_id default 0 untuk backward compat.", tags: ["workspace","sqlite"], source: "agent:worker-1", category_id: 1, degree: 5 },
+  { id: 14, label: "Dashboard real-time TUI",                content: "smara dashboard membaca metrics.json setiap interval (default 2s). Render dengan bubbletea. Tampilkan platform stats, LLM tokens, MCP status.", tags: ["dashboard","tui"], source: "user", category_id: 2, degree: 3 },
+  { id: 15, label: "PRD Memory Graph linking",               content: "Memory harus saling terhubung. Tabel memory_links (source, target, relation, weight). Auto-link via embedding similarity threshold 0.78. Visualisasi dengan vis-network atau React Flow.", tags: ["idea","memory","graph"], source: "user", category_id: 5, degree: 8 },
+  { id: 16, label: "Hybrid search: vector + FTS",            content: "SearchHybrid: gabung vector results (weight 0.6) + FTS results (weight 0.4). Sort by combined score. Lebih robust untuk query short.", tags: ["search","embedding"], source: "agent:worker-2", category_id: 1, degree: 6 },
+  { id: 17, label: "Knowledge graph Graphify",               content: "smara graphify init parse codebase Go → build graph node (function/class/file) + edge (calls/imports/inherits). Inject ke system prompt agen.", tags: ["graph","ast","golang"], source: "user", category_id: 1, degree: 5 },
+  { id: 18, label: "Pastel green button variants",           content: "Button primary: bg #bef264 / text #0b0d0a. Hover: bg accent-soft / text #bef264. Border 1px solid border-soft. Border-radius 6px konsisten.", tags: ["design","component","button"], source: "user", category_id: 2, degree: 4 },
+];
+
+// Edges - mix of manual (relations) and auto (similarity)
+const MOCK_EDGES = [
+  // Cluster 1: SQLite/storage
+  { from: 2,  to: 3,  relation: "supports",     weight: 0.74, auto: false },
+  { from: 2,  to: 4,  relation: "supports",     weight: 0.71, auto: false },
+  { from: 2,  to: 13, relation: "extends",      weight: 0.83, auto: false },
+  { from: 3,  to: 4,  relation: "fallback",     weight: 0.69, auto: false },
+  { from: 3,  to: 16, relation: "used-by",      weight: 0.92, auto: false },
+  { from: 4,  to: 16, relation: "used-by",      weight: 0.85, auto: false },
+  { from: 10, to: 13, relation: "similar",      weight: 0.81, auto: true },
+
+  // Auto-link similarity within storage cluster
+  { from: 2,  to: 16, relation: "similar",      weight: 0.79, auto: true },
+  { from: 13, to: 16, relation: "similar",      weight: 0.82, auto: true },
+
+  // Cluster 2: Design / UI
+  { from: 5,  to: 6,  relation: "part-of",      weight: 0.88, auto: false },
+  { from: 5,  to: 7,  relation: "part-of",      weight: 0.85, auto: false },
+  { from: 5,  to: 18, relation: "applied-in",   weight: 0.76, auto: false },
+  { from: 6,  to: 7,  relation: "similar",      weight: 0.84, auto: true },
+  { from: 6,  to: 11, relation: "similar",      weight: 0.78, auto: true },
+  { from: 11, to: 18, relation: "similar",      weight: 0.81, auto: true },
+  { from: 14, to: 5,  relation: "uses",         weight: 0.65, auto: false },
+
+  // Cluster 3: Setup & infra
+  { from: 1,  to: 2,  relation: "follows",      weight: 0.86, auto: false },
+  { from: 1,  to: 8,  relation: "enables",      weight: 0.71, auto: false },
+  { from: 1,  to: 9,  relation: "enables",      weight: 0.68, auto: false },
+  { from: 1,  to: 12, relation: "enables",      weight: 0.62, auto: false },
+  { from: 8,  to: 13, relation: "protects",     weight: 0.72, auto: false },
+  { from: 9,  to: 12, relation: "similar",      weight: 0.79, auto: true },
+
+  // Cluster 4: Knowledge graph
+  { from: 17, to: 11, relation: "visualized-by", weight: 0.78, auto: false },
+  { from: 17, to: 15, relation: "inspires",      weight: 0.91, auto: false },
+  { from: 15, to: 11, relation: "uses",          weight: 0.87, auto: false },
+  { from: 15, to: 3,  relation: "uses",          weight: 0.82, auto: false },
+  { from: 15, to: 16, relation: "uses",          weight: 0.83, auto: false },
+  { from: 15, to: 10, relation: "similar",       weight: 0.78, auto: true },
+
+  // Misc cross-cluster
+  { from: 6,  to: 14, relation: "applied-in",    weight: 0.69, auto: false },
+  { from: 17, to: 1,  relation: "scaffolded-by", weight: 0.74, auto: false },
+];
+
+// ========================================================================
+// RENDER
+// ========================================================================
+const $ = (id) => document.getElementById(id);
+const elGraph  = $('graph');
+const elDetail = $('detail');
+const elStats  = $('stats');
+const elSearch = $('search');
+const elToast  = $('toast');
+
+let network = null;
+let nodesDS = null;
+let edgesDS = null;
+
+function classifyNode(n) {
+  const deg = n.degree || 0;
+  if (deg >= 8)  return { bg: '#bef264', border: '#e7ffb0', font: '#0b0d0a' };
+  if (deg >= 6)  return { bg: '#88be3b', border: '#bef264', font: '#0b0d0a' };
+  if (deg >= 4)  return { bg: '#3a5018', border: '#8aae3a', font: '#f4ffe0' };
+  if (deg >= 1)  return { bg: '#243018', border: '#5a7a2a', font: '#cfd8c0' };
+  return { bg: '#1a1f15', border: '#3a4a25', font: '#9ca58a' };
+}
+
+function toVisNodes(nodes) {
+  return nodes.map(n => {
+    const c = classifyNode(n);
+    return {
+      id: n.id,
+      label: n.label,
+      title: '#' + n.id + (n.tags.length ? ' [' + n.tags.join(', ') + ']' : '') + '\n' + n.content.slice(0, 160),
+      color: { background: c.bg, border: c.border, highlight: { background: '#bef264', border: '#ffffff' } },
+      font: { color: c.font, size: 11, face: 'ui-sans-serif', strokeWidth: 0 },
+      shape: 'box',
+      margin: 9,
+      borderWidth: 1,
+      borderWidthSelected: 2,
+      widthConstraint: { maximum: 200 },
+    };
+  });
+}
+
+function toVisEdges(edges) {
+  return edges.map((e, i) => ({
+    id: 'e' + i,
+    from: e.from,
+    to: e.to,
+    label: e.relation === 'similar' ? '' : e.relation,
+    color: {
+      color: e.auto ? 'rgba(106,138,58,0.55)' : 'rgba(190,242,100,0.85)',
+      highlight: '#ffffff',
+    },
+    dashes: e.auto,
+    width: Math.max(0.7, Math.min(3.5, e.weight * 3.5)),
+    arrows: { to: { enabled: !e.auto, scaleFactor: 0.45 } },
+    smooth: { type: 'continuous', roundness: 0.4 },
+    font: { color: '#8a9078', size: 9, strokeWidth: 0, align: 'middle' },
+  }));
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderDetail(node) {
+  if (!node) {
+    elDetail.innerHTML = '<div class="empty">Pilih node dari graph<br>untuk melihat detail dan link-nya.</div>';
+    return;
+  }
+  const tagsHTML = (node.tags || []).map(t => `<span class="pill">#${escapeHtml(t)}</span>`).join('');
+  const neighbors = MOCK_EDGES
+    .filter(e => e.from === node.id || e.to === node.id)
+    .map(e => {
+      const otherId = e.from === node.id ? e.to : e.from;
+      const other = MOCK_NODES.find(n => n.id === otherId);
+      return { other, edge: e };
+    });
+
+  const linksHTML = neighbors.map(({other, edge}) => {
+    if (!other) return '';
+    return `<div class="link ${edge.auto ? 'auto' : ''}" data-id="${other.id}">
+              <span class="rel">${escapeHtml(edge.relation)}</span>
+              <span class="w">w=${edge.weight.toFixed(2)}</span>
+              <span class="lbl">[${other.id}] ${escapeHtml(other.label)}</span>
+            </div>`;
+  }).join('');
+
+  elDetail.innerHTML = `
+    <div class="meta">MEMORY #${node.id}${node.source ? ' · ' + escapeHtml(node.source) : ''}</div>
+    <div class="pills">
+      ${tagsHTML || '<span class="pill gray">no tags</span>'}
+    </div>
+    <div class="content">${escapeHtml(node.content)}</div>
+    <div class="stats-row">
+      <span>degree <span class="v">${node.degree}</span></span>
+      <span>neighbors <span class="v">${neighbors.length}</span></span>
+      <span>auto-links <span class="v">${neighbors.filter(n => n.edge.auto).length}</span></span>
+    </div>
+    <div class="links-title">◇ Links</div>
+    ${linksHTML || '<div class="empty" style="padding:16px 0;">Belum ada link.</div>'}
+  `;
+
+  elDetail.querySelectorAll('.link').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = parseInt(el.getAttribute('data-id'));
+      network.selectNodes([id]);
+      network.focus(id, { scale: 1.2, animation: { duration: 380, easingFunction: 'easeInOutCubic' } });
+      const target = MOCK_NODES.find(n => n.id === id);
+      renderDetail(target);
+    });
+  });
+}
+
+function showToast(msg) {
+  elToast.textContent = msg;
+  elToast.classList.add('show');
+  setTimeout(() => elToast.classList.remove('show'), 2200);
+}
+
+function build() {
+  elStats.textContent = MOCK_NODES.length + ' nodes · ' + MOCK_EDGES.length + ' edges';
+
+  nodesDS = new vis.DataSet(toVisNodes(MOCK_NODES));
+  edgesDS = new vis.DataSet(toVisEdges(MOCK_EDGES));
+
+  network = new vis.Network(elGraph, { nodes: nodesDS, edges: edgesDS }, {
+    physics: {
+      enabled: true,
+      solver: 'forceAtlas2Based',
+      forceAtlas2Based: {
+        gravitationalConstant: -55,
+        centralGravity: 0.008,
+        springLength: 110,
+        damping: 0.55,
+        avoidOverlap: 0.3,
+      },
+      stabilization: { iterations: 250 },
+    },
+    interaction: { hover: true, tooltipDelay: 150, navigationButtons: false },
+    nodes: { borderWidthSelected: 2 },
+    edges: { selectionWidth: 2 },
+  });
+
+  network.on('click', (params) => {
+    if (params.nodes.length === 0) { renderDetail(null); return; }
+    const id = params.nodes[0];
+    const node = MOCK_NODES.find(n => n.id === id);
+    if (node) renderDetail(node);
+  });
+
+  network.once('stabilizationIterationsDone', () => {
+    network.setOptions({ physics: { enabled: false } });
+    network.fit({ animation: { duration: 400, easingFunction: 'easeInOutCubic' } });
+  });
+
+  // Pastikan canvas mengikuti ukuran container saat window/grid berubah.
+  window.addEventListener('resize', () => { if (network) network.redraw(); });
+  // Trigger satu redraw setelah layout settle.
+  requestAnimationFrame(() => network && network.redraw());
+}
+
+elSearch.addEventListener('input', () => {
+  if (!nodesDS) return;
+  const q = elSearch.value.trim().toLowerCase();
+  if (!q) {
+    nodesDS.update(MOCK_NODES.map(n => ({ id: n.id, hidden: false })));
+    edgesDS.update(MOCK_EDGES.map((_, i) => ({ id: 'e' + i, hidden: false })));
+    return;
+  }
+  const matched = new Set(
+    MOCK_NODES.filter(n =>
+      n.label.toLowerCase().includes(q) ||
+      n.content.toLowerCase().includes(q) ||
+      n.tags.some(t => t.toLowerCase().includes(q))
+    ).map(n => n.id)
+  );
+  nodesDS.update(MOCK_NODES.map(n => ({ id: n.id, hidden: !matched.has(n.id) })));
+  edgesDS.update(MOCK_EDGES.map((e, i) => ({
+    id: 'e' + i,
+    hidden: !(matched.has(e.from) && matched.has(e.to)),
+  })));
+});
+
+$('autolink').addEventListener('click', () => {
+  const t = parseFloat($('threshold').value) || 0.78;
+  const k = parseInt($('topk').value) || 5;
+  showToast(`✦ Auto-link selesai (mock): ${MOCK_EDGES.filter(e => e.auto).length} link · threshold=${t} · top-k=${k}`);
+});
+$('reload').addEventListener('click', () => {
+  if (network) { network.destroy(); network = null; }
+  build();
+  showToast('↻ Graph di-reload');
+});
+
+// Workspace clicks (mock)
+document.querySelectorAll('.ws').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.ws').forEach(x => x.classList.remove('active'));
+    el.classList.add('active');
+    showToast('Workspace: ' + el.textContent.trim());
+  });
+});
+
+build();
+</script>
+</body>
+</html>

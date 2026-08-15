@@ -1,0 +1,74 @@
+# Compiled binaries and executables
+*.test
+*.exe
+*.dll
+*.so
+*.dylib
+*.out
+bin/
+**/bin/
+build/
+**/build/
+dist/
+**/dist/
+/smara-backup-pre-phase3
+/smara-fix-model-label
+/smara-test
+/smara_test
+
+# Test outputs, reports, and scratchpad
+BUILD_STATUS.txt
+GRAPH_REPORT.md
+test-results/
+**/test-results/
+playwright-report/
+**/playwright-report/
+test-results-ssh-prompt.md
+graphify-out/
+*.graphml
+smara-root.json
+scratch/
+docs-site-react-backup-*
+gemini-code-*.md
+
+# Dependencies & Package managers
+node_modules/
+**/node_modules/
+.pnp
+.pnp.js
+.vite/
+**/.vite/
+
+# Rust / Cargo build artifacts
+target/
+**/target/
+
+# IDE, Editor & AI Assistant files
+.vscode/
+**/.vscode/
+.idea/
+**/.idea/
+.kiro/
+**/.kiro/
+.kilo/
+**/.kilo/
+.windsurf/
+**/.windsurf/
+.smara/
+**/.smara/
+.claude/
+**/.claude/
+.opencode/
+**/.opencode/
+
+# Environment and sensitive keys
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs & OS artifacts
+*.log
+.DS_Store
+Thumbs.db
